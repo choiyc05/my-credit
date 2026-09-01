@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import requests
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
 KST = dt.timezone(dt.timedelta(hours=9))
@@ -236,14 +237,16 @@ def post(cfg, content, embed):
     print("디스코드 전송 완료 (HTTP {})".format(resp.status_code))
 
 
-def post_no_data(cfg):
+def post_no_data(cfg, reason):
     embed = {
         "title": "💳 {} 크레딧 리포트".format(cfg.project_label),
         "description": (
-            "빌링 내보내기 테이블에 아직 데이터가 없습니다.\n"
-            "내보내기를 방금 켰다면 첫 데이터가 도착하기까지 최대 24시간 걸립니다."
-        ),
+            "{}\n"
+            "결제 내보내기를 방금 켰다면 첫 데이터가 도착하기까지 최대 24시간 걸립니다.\n"
+            "그 전까지는 이 안내만 전송됩니다."
+        ).format(reason),
         "color": 0x95A5A6,
+        "footer": {"text": cfg.table},
         "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
     post(cfg, "", embed)
@@ -253,9 +256,15 @@ def main():
     cfg = Config.from_env()
     client = bigquery.Client()
 
-    totals, daily = fetch_totals_and_daily(client, cfg)
+    try:
+        totals, daily = fetch_totals_and_daily(client, cfg)
+    except NotFound:
+        # 내보내기를 켠 직후에는 테이블 자체가 아직 생성되지 않는다.
+        post_no_data(cfg, "빌링 내보내기 테이블이 아직 생성되지 않았습니다.")
+        return
+
     if totals["last_export"] is None:
-        post_no_data(cfg)
+        post_no_data(cfg, "빌링 내보내기 테이블에 아직 데이터가 없습니다.")
         return
 
     used = float(totals["used_now"])
