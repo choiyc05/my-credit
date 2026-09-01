@@ -111,6 +111,14 @@ Variables:
 .\check_export.ps1
 ```
 
+Git Bash(Claude Code 의 `!` 프리픽스 포함)에서는 PowerShell 을 명시해야 한다.
+`bq` 는 Git Bash 래퍼가 없는 파이썬을 찾아 실행되지 않는다.
+
+```bash
+powershell -NoProfile -File check_export.ps1
+```
+
+테이블 경로는 `.env` 의 `BQ_BILLING_TABLE` 에서 읽으므로 `.env.example` 을 복사해 두면 인자가 필요 없다.
 테이블 생성 여부 → 행 수 → 데이터 요약(사용 기간, 차감된 크레딧)을 차례로 확인한다.
 종료 코드로도 구분된다: `0` 준비됨 / `2` 테이블 없음 / `3` 테이블은 있으나 비어 있음.
 

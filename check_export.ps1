@@ -9,6 +9,9 @@ param([string]$Table = $env:BQ_BILLING_TABLE)
 
 $ErrorActionPreference = "Stop"
 
+# Git Bash 등에서 파이프로 받을 때 한글이 깨지지 않도록 출력 인코딩을 고정한다.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 if (-not $Table -and (Test-Path ".env")) {
     Get-Content .env | ForEach-Object {
         if ($_ -match '^\s*BQ_BILLING_TABLE\s*=\s*(.+?)\s*$') { $Table = $Matches[1] }
