@@ -2,8 +2,9 @@ name: GCP credit report
 
 on:
   schedule:
-    # KST 09:00 / 21:00 (UTC 00:00 / 12:00)
-    - cron: "0 0,12 * * *"
+    # KST 08:37 / 20:37 (UTC 23:37 / 11:37)
+    # 정각(분=0)과 00:00 UTC 는 스케줄 지연·스킵이 잦아 한산한 분으로 옮김
+    - cron: "37 11,23 * * *"
   workflow_dispatch:
 
 jobs:
