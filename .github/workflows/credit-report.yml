@@ -2,8 +2,8 @@ name: GCP credit report
 
 on:
   # 정기 실행은 Cloud Scheduler -> Cloud Run Job 이 담당한다 (README "Cloud Run Job 배포").
-  # GitHub 의 schedule 은 무료 플랜 private 저장소에서 한 번도 발화하지 않았고,
-  # 되살리면 Cloud Run 과 같은 시각이라 카드가 두 번 온다. 수동 실행 경로만 남긴다.
+  # GitHub 의 schedule 은 지연이 심하다. 실측으로 11:37Z 슬롯이 15:16Z 에 발화했다 (3시간 39분).
+  # 되살리면 Cloud Run 과 시각이 겹쳐 카드가 두 번 온다. 수동 실행 경로만 남긴다.
   #
   # schedule:
   #   - cron: "37 11,23 * * *"   # KST 08:37 / 20:37
