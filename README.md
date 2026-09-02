@@ -5,11 +5,14 @@ GCP 크레딧 잔액을 하루 2회 디스코드로 자동 보고한다.
 ```
 Cloud Billing ──(BigQuery 내보내기)──> BigQuery 테이블
                                             │
-       GitHub Actions cron (KST 09:00/21:00) ┘
-                     │  잔액 · 어제 사용액 · 서비스 TOP5 · 소진 예상일
-                     ▼
-              Discord Webhook
+   Cloud Scheduler ──> Cloud Run Job ───────┘   (KST 08:37 / 20:37)
+             │  잔액 · 어제 사용액 · 서비스 TOP5 · 소진 예상일
+             ▼
+      Discord Webhook
 ```
+
+GitHub Actions 워크플로도 같은 스크립트를 돌리지만 **수동 실행 전용**으로만 남겨 두었다.
+이유는 아래 "Cloud Run Job 배포" 참고.
 
 ## 왜 BigQuery를 거치나
 
@@ -93,12 +96,50 @@ Variables:
 
 등록 후 **Actions → GCP credit report → Run workflow** 로 즉시 테스트할 수 있다.
 
+### 5. Cloud Run Job 배포 (정기 실행 경로)
+
+GitHub 의 `schedule` cron 은 무료 플랜 private 저장소에서 우선순위가 가장 낮아, 이 저장소에서는
+등록 후 두 슬롯이 연속으로 발화하지 않았다 (설정·권한·잔여 분은 모두 정상이었다). 그래서 정기
+실행을 Cloud Scheduler + Cloud Run Job 으로 옮겼다. Cloud Run 은 서비스 계정을 네이티브로
+붙이므로 **JSON 키 파일이 아예 필요 없다.**
+
+```bash
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com   artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com
+
+# 웹후크는 Secret Manager 로. 끝에 개행이 붙으면 URL 이 깨지니 파일로 넣는다
+gcloud secrets create discord-webhook-url --data-file=webhook.txt --replication-policy=automatic
+gcloud secrets add-iam-policy-binding discord-webhook-url   --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor"
+
+# 잡 배포. MENTION_THRESHOLDS 값에 쉼표가 있어 ^|^ 커스텀 구분자를 쓴다
+gcloud run jobs deploy credit-report --source . --region=asia-northeast3   --service-account="$SA"   --set-env-vars="^|^BQ_BILLING_TABLE=...|TOTAL_CREDIT=435523|CREDIT_EXPIRY=2026-11-17|CURRENCY=KRW|PROJECT_LABEL=DAENGS|MENTION_THRESHOLDS=50,80,90|MENTION_TARGET=@everyone|MENTION_LOOKBACK_HOURS=12|REPORT_TZ=Asia/Seoul|CREDIT_TYPES=PROMOTION"   --set-secrets="DISCORD_WEBHOOK_URL=discord-webhook-url:latest"   --max-retries=1 --task-timeout=5m
+
+# 스케줄러가 잡을 호출하려면 run.invoker 가 필요하다
+gcloud run jobs add-iam-policy-binding credit-report --region=asia-northeast3   --member="serviceAccount:$SA" --role="roles/run.invoker"
+
+gcloud scheduler jobs create http credit-report-schedule --location=asia-northeast3   --schedule="37 8,20 * * *" --time-zone="Asia/Seoul"   --uri="https://asia-northeast3-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/daengs/jobs/credit-report:run"   --http-method=POST --oauth-service-account-email="$SA"
+```
+
+코드를 고친 뒤에는 `--source .` 배포만 다시 하면 된다. `.gcloudignore` 가 `.env` 와 `*.json` 을
+빌드 컨텍스트에서 빼므로 자격증명이 이미지에 올라가지 않는다.
+
+```bash
+gcloud run jobs execute credit-report --region=asia-northeast3            # 즉시 실행
+gcloud run jobs executions list --job=credit-report --region=asia-northeast3   # 이력
+gcloud scheduler jobs describe credit-report-schedule --location=asia-northeast3
+```
+
+> **주의:** GitHub Actions 의 `schedule` 을 되살리면 Cloud Run 과 실행 시각이 같아 카드가 두 번
+> 온다. 임계치 멘션은 "12시간 전 사용률 대비 새로 넘어섰는가" 로만 판정하는 무상태 로직이라
+> 두 경로가 나란히 돌면 **같은 임계치로 `@everyone` 이 두 번 울린다.** 그래서 워크플로에는
+> `workflow_dispatch` 만 남겨 두었다.
+
+
 ---
 
 ## 동작 방식
 
-- **스케줄**: `.github/workflows/credit-report.yml` 의 cron `0 0,12 * * *` = KST 09:00 / 21:00.
-  횟수를 바꾸면 `MENTION_LOOKBACK_HOURS` 도 실행 간격(시간)에 맞춰 바꾼다.
+- **스케줄**: Cloud Scheduler 잡 `credit-report-schedule` 의 `37 8,20 * * *` (Asia/Seoul)
+  = KST 08:37 / 20:37. 횟수를 바꾸면 `MENTION_LOOKBACK_HOURS` 도 실행 간격(시간)에 맞춰 바꾼다.
 - **임계치 멘션**: 매번 시끄럽지 않도록, 직전 실행 구간에서 **새로 넘어선** 임계치가 있을 때만
   `@everyone` 을 붙인다. 이미 90%를 넘은 상태로 계속 있으면 다시 멘션하지 않는다.
 - **소진 예상일**: 최근 7일 평균 사용량 기준. 예상일이 크레딧 만료일보다 늦으면

@@ -1,10 +1,12 @@
 name: GCP credit report
 
 on:
-  schedule:
-    # KST 08:37 / 20:37 (UTC 23:37 / 11:37)
-    # 정각(분=0)과 00:00 UTC 는 스케줄 지연·스킵이 잦아 한산한 분으로 옮김
-    - cron: "37 11,23 * * *"
+  # 정기 실행은 Cloud Scheduler -> Cloud Run Job 이 담당한다 (README "Cloud Run Job 배포").
+  # GitHub 의 schedule 은 무료 플랜 private 저장소에서 한 번도 발화하지 않았고,
+  # 되살리면 Cloud Run 과 같은 시각이라 카드가 두 번 온다. 수동 실행 경로만 남긴다.
+  #
+  # schedule:
+  #   - cron: "37 11,23 * * *"   # KST 08:37 / 20:37
   workflow_dispatch:
 
 jobs:

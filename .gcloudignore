@@ -1,0 +1,10 @@
+# 빌드 컨텍스트에 올릴 것만 남긴다. 자격증명(.env, *.json)은 절대 업로드하지 않는다.
+.git/
+.gitignore
+.github/
+.env
+*.json
+*.ps1
+__pycache__/
+.venv/
+README.md
